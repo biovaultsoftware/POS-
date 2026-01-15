@@ -1,0 +1,21 @@
+name = "human1stai"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# AI Binding (Required for Workers AI)
+[ai]
+binding = "AI"
+
+# Vectorize Binding (For RAG/Knowledge Base)
+[[vectorize]]
+binding = "HUMAN1STAI"
+index_name = "ai-search-human1stai"
+
+# Secrets (set via wrangler secret put)
+# TAVILY_API_KEY - for web search
+# BRAVE_API_KEY - alternative search
+
+# Optional: Add your custom domain
+# routes = [
+#   { pattern = "api.yourdomain.com/*", zone_name = "yourdomain.com" }
+# ]
