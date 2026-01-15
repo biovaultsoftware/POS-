@@ -657,7 +657,18 @@
       [data-route="chat"] .sidebar { transform: translateX(-100%); }
       [data-route="chat"] .main { display: flex; }
     }
-  </style>
+  
+    .mini-btn{margin-top:8px;background:#222;border:1px solid #333;color:#fff;padding:6px 10px;border-radius:10px;font-size:11px;cursor:pointer}
+    .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:1000}
+    .modal.open{display:flex}
+    .modal-card{width:min(520px,92vw);background:#111;border:1px solid #222;border-radius:16px;padding:16px}
+    .modal-card h3{margin:0 0 10px 0}
+    .modal-card label{display:block;font-size:12px;opacity:.8;margin-top:10px}
+    .modal-card input,.modal-card textarea,.modal-card select{width:100%;background:#1b1b1b;border:1px solid #333;color:#fff;border-radius:10px;padding:10px;margin-top:6px}
+    .modal-card textarea{min-height:90px;resize:vertical}
+    .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
+    .btn.secondary{background:#222;color:#fff}
+    
 </head>
 <body data-route="home" data-theme="ember" data-mode="dark">
 
@@ -805,5 +816,58 @@
   </div>
 
   <script type="module" src="./main.js"></script>
+
+  <div class="modal" id="modalDecision" aria-hidden="true">
+    <div class="modal-card">
+      <h3>Log Decision</h3>
+      <form id="decisionForm">
+        <label>Title</label>
+        <input name="title" placeholder="e.g., Rent Al Rayyan shop" required>
+        <label>Description (optional)</label>
+        <textarea name="description" placeholder="Key facts, constraints, risks..."></textarea>
+        <label>Due date (optional)</label>
+        <input name="dueAt" type="date">
+        <label>Capital required (QAR) (optional)</label>
+        <input name="capitalRequired" type="number" step="1" min="0" placeholder="e.g., 50000">
+        <label>Tags (comma-separated)</label>
+        <input name="tags" placeholder="rent, legal, cashflow">
+        <label style="display:flex;gap:8px;align-items:center;margin-top:12px;">
+          <input name="requireCosign" type="checkbox" style="width:auto;margin:0;">
+          Require partner co-sign (Boardroom)
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="btn secondary" id="btnDecisionClose">Cancel</button>
+          <button type="submit" class="btn">Commit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="modalOutcome" aria-hidden="true">
+    <div class="modal-card">
+      <h3>Mark Outcome</h3>
+      <form id="outcomeForm">
+        <label>Decision Seq</label>
+        <input name="decisionSeq" type="number" step="1" min="1" placeholder="e.g., 12" required>
+        <label>Outcome</label>
+        <select name="outcome">
+          <option value="SUCCESS">SUCCESS</option>
+          <option value="PARTIAL">PARTIAL</option>
+          <option value="FAILURE">FAILURE</option>
+        </select>
+        <label>Evidence (optional)</label>
+        <textarea name="evidence" placeholder="What proof did you capture? (photo hash, doc ref, note)"></textarea>
+        <label>Metrics JSON (optional)</label>
+        <textarea name="metrics" placeholder='{"revenue":1200,"cost":800}'></textarea>
+        <label>Voter HIDs (comma-separated, optional)</label>
+        <input name="voterHids" placeholder="HID-..., HID-...">
+        <div class="modal-actions">
+          <button type="button" class="btn secondary" id="btnOutcomeClose">Cancel</button>
+          <button type="submit" class="btn">Commit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
 </body>
 </html>

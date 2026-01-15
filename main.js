@@ -33,12 +33,16 @@ import {
   verify
 } from './state.js';
 import { kbUpsertMessage, kbSearch } from './kb.js';
+import { SignalClient } from './signal.js';
+import { P2PManager } from './p2p.js';
 
 // ═══════════════════════════════════════════════════════════════
 // CONFIGURATION
 // ═══════════════════════════════════════════════════════════════
 
 const CONFIG = {
+  SIGNAL_URLS: ['wss://signal.rr-rshemodel.workers.dev/signal'],
+  INTEGRITY_CHECK_DEPTH: 20,
   DB_NAME: 'sovereign_os_v1',
   DB_VERSION: 1,
   
@@ -98,6 +102,8 @@ const OPENER = {
 // ═══════════════════════════════════════════════════════════════
 
 const state = {
+  signal: null,
+  p2p: null,
   db: null,
   identity: null, // { hik, hid, privateKey, publicKey, pubJwk }
   
@@ -141,6 +147,16 @@ function cacheDom() {
   DOM.composer = $('#composer');
   DOM.msgInput = $('#msgInput');
   DOM.btnSend = $('#btnSend');
+    DOM.btnShare = $('#btnShare');
+    DOM.btnImport = $('#btnImport');
+    DOM.btnDecision = $('#btnDecision');
+    DOM.btnOutcome = $('#btnOutcome');
+    DOM.modalDecision = $('#modalDecision');
+    DOM.modalOutcome = $('#modalOutcome');
+    DOM.decisionForm = $('#decisionForm');
+    DOM.outcomeForm = $('#outcomeForm');
+    DOM.btnModalClose1 = $('#btnDecisionClose');
+    DOM.btnModalClose2 = $('#btnOutcomeClose');
   DOM.toast = $('#toast');
   DOM.toastText = $('#toastText');
   DOM.themeToggle = $('#themeToggle');
@@ -1413,3 +1429,206 @@ window.SovereignOS = {
   kbSearch: (q) => kbSearch(state.db, q),
   COUNCIL
 };
+  // --- BOARDROOM (P2P) + DECISIONS (A+B+C+D) ---
+  async function initNetwork() {
+    if (state.p2p) return true;
+    try {
+      state.signal = new SignalClient(CONFIG.SIGNAL_URLS);
+      state.p2p = new P2PManager({ signal: state.signal });
+      await state.signal.connect();
+      // Minimal: ready to accept connections; app can call state.p2p.connectTo(peerCode) later
+      console.log('🤝 Boardroom network ready');
+      return true;
+    } catch (e) {
+      console.warn('P2P init failed:', e);
+      showToast('⚠️ Boardroom offline');
+      return false;
+    }
+  }
+
+  function openModal(el) { if (el) el.classList.add('open'); }
+  function closeModal(el) { if (el) el.classList.remove('open'); }
+
+  function openDecisionModal(prefill = {}) {
+    if (!DOM.modalDecision || !DOM.decisionForm) return;
+    DOM.decisionForm.reset();
+    // Prefill
+    DOM.decisionForm.querySelector('[name="title"]').value = prefill.title || '';
+    DOM.decisionForm.querySelector('[name="description"]').value = prefill.description || '';
+    DOM.decisionForm.querySelector('[name="dueAt"]').value = prefill.dueAt || '';
+    DOM.decisionForm.querySelector('[name="capitalRequired"]').value = prefill.capitalRequired || '';
+    DOM.decisionForm.querySelector('[name="tags"]').value = prefill.tags || '';
+    DOM.decisionForm.querySelector('[name="requireCosign"]').checked = !!prefill.requireCosign;
+    openModal(DOM.modalDecision);
+  }
+
+  function openOutcomeModal(prefill = {}) {
+    if (!DOM.modalOutcome || !DOM.outcomeForm) return;
+    DOM.outcomeForm.reset();
+    DOM.outcomeForm.querySelector('[name="decisionSeq"]').value = prefill.decisionSeq || '';
+    DOM.outcomeForm.querySelector('[name="outcome"]').value = prefill.outcome || 'SUCCESS';
+    DOM.outcomeForm.querySelector('[name="evidence"]').value = prefill.evidence || '';
+    DOM.outcomeForm.querySelector('[name="metrics"]').value = prefill.metrics || '';
+    DOM.outcomeForm.querySelector('[name="voterHids"]').value = prefill.voterHids || '';
+    openModal(DOM.modalOutcome);
+  }
+
+  async function onDecisionSubmit(e) {
+    e.preventDefault();
+    if (!state.activeChatId) return;
+    const fd = new FormData(DOM.decisionForm);
+    const payload = {
+      threadId: state.activeChatId,
+      title: String(fd.get('title') || '').trim(),
+      description: String(fd.get('description') || '').trim(),
+      decision: 'PENDING',
+      status: 'OPEN',
+      dueAt: fd.get('dueAt') ? String(fd.get('dueAt')) : undefined,
+      tags: String(fd.get('tags') || '').split(',').map(s=>s.trim()).filter(Boolean),
+      capitalRequired: fd.get('capitalRequired') ? Number(fd.get('capitalRequired')) : undefined,
+      risks: [],
+      requireCosign: !!fd.get('requireCosign')
+    };
+    if (!payload.title) return showToast('⚠️ Title required');
+    closeModal(DOM.modalDecision);
+    await commitAndProject('biz.decision', payload, state.activeChatId);
+    renderThread();
+    renderChatList();
+  }
+
+  async function onOutcomeSubmit(e) {
+    e.preventDefault();
+    if (!state.activeChatId) return;
+    const fd = new FormData(DOM.outcomeForm);
+    const decisionSeq = Number(fd.get('decisionSeq'));
+    if (!decisionSeq) return showToast('⚠️ decisionSeq required');
+    let metrics = {};
+    const metricsRaw = String(fd.get('metrics') || '').trim();
+    if (metricsRaw) {
+      try { metrics = JSON.parse(metricsRaw); } catch { metrics = { notes: metricsRaw }; }
+    }
+    const payload = {
+      threadId: state.activeChatId,
+      decisionSeq,
+      outcome: String(fd.get('outcome') || 'SUCCESS'),
+      evidence: String(fd.get('evidence') || '').trim(),
+      metrics,
+      voterHids: String(fd.get('voterHids') || '').split(',').map(s=>s.trim()).filter(Boolean)
+    };
+    closeModal(DOM.modalOutcome);
+    await commitAndProject('biz.outcome', payload, state.activeChatId);
+    renderThread();
+    renderChatList();
+  }
+
+  async function handleQuickAction(kind) {
+    const now = new Date();
+    if (kind === 'time_audit') {
+      openDecisionModal({
+        title: 'Time Audit Sprint (48h)',
+        description: 'Log where hours went + delete 1 time leak + schedule 1 repeatable offer.',
+        dueAt: now.toISOString().slice(0,10),
+        tags: 'time,audit,48h',
+        requireCosign: false
+      });
+      return;
+    }
+    if (kind === 'wheat_test') {
+      openDecisionModal({
+        title: 'Wheat Test (Need Strength)',
+        description: 'Define: who needs it weekly? what pain? what proof? Avoid tomato/hype.',
+        dueAt: now.toISOString().slice(0,10),
+        tags: 'wheat,test,need',
+        requireCosign: false
+      });
+      return;
+    }
+    if (kind === 'money_map') {
+      openDecisionModal({
+        title: 'Money Map Step',
+        description: 'Pick next system move: offer, channel, proof, or automation.',
+        dueAt: now.toISOString().slice(0,10),
+        tags: 'money-map,system',
+        requireCosign: false
+      });
+      return;
+    }
+    if (kind === 'ask_council') {
+      DOM.msgInput?.focus();
+      return;
+    }
+  }
+
+  async function exportThreadSlice(chatId, limit = 10) {
+    const tx = db.transaction(['state_chain'], 'readonly');
+    const all = await reqDone(tx.objectStore('state_chain').getAll());
+    await txDone(tx);
+    const filtered = all
+      .filter(sta => (sta.payload?.threadId === chatId) || (sta.payload?.chatId === chatId))
+      .sort((a,b)=>a.seq-b.seq)
+      .slice(-limit);
+    const sliceJson = JSON.stringify(filtered);
+    const sliceHash = await sha256Hex(canonicalize({ v: 1, chatId, count: filtered.length, slice: filtered }));
+    return { chatId, sliceHash, slice: filtered, exportedAt: Date.now() };
+  }
+
+  async function onShare() {
+    if (!state.activeChatId) return showToast('⚠️ Open a chat first');
+    const pkg = await exportThreadSlice(state.activeChatId, 10);
+    const text = JSON.stringify(pkg, null, 2);
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('✅ Slice copied (paste to partner)');
+    } catch {
+      // fallback prompt
+      prompt('Copy this JSON slice:', text);
+    }
+    // Optional: initialize network so later we can send via DataChannel
+    initNetwork();
+  }
+
+  async function onImport() {
+    const raw = prompt('Paste shared slice JSON:');
+    if (!raw) return;
+    let pkg;
+    try { pkg = JSON.parse(raw); } catch { return showToast('❌ Invalid JSON'); }
+    const slice = pkg.slice;
+    if (!Array.isArray(slice) || !slice.length) return showToast('❌ No slice');
+    // Verify each STA signature (best-effort)
+    let okCount = 0;
+    const voterHids = new Set();
+    for (const sta of slice) {
+      try {
+        const pubJwk = sta.author?.pubJwk;
+        if (!pubJwk) throw new Error('missing pubJwk');
+        const pubKey = await importPubKeyJwk(pubJwk);
+        const signable = staSignable(sta);
+        const ok = await verify(pubKey, signable, sta.signature);
+        if (ok) {
+          okCount++;
+          // compute HID from pubJwk
+          const hid = await computeHID(pubJwk);
+          voterHids.add(hid);
+        }
+      } catch (e) {
+        console.warn('verify fail', e);
+      }
+    }
+    showToast(`Imported slice: ${okCount}/${slice.length} verified`);
+    // Append a local outcome marker referencing slice hash (keeps chain linear)
+    const evidence = `Imported boardroom slice for ${pkg.chatId || 'unknown'} hash=${pkg.sliceHash || 'n/a'}`;
+    const payload = {
+      threadId: state.activeChatId || 'default',
+      decisionSeq: slice[slice.length-1].seq || 0,
+      outcome: 'PARTIAL',
+      evidence,
+      metrics: { sharedSliceHash: pkg.sliceHash, sharedCount: slice.length },
+      voterHids: Array.from(voterHids)
+    };
+    await commitAndProject('biz.outcome', payload, state.activeChatId || 'default');
+    renderThread();
+    renderChatList();
+    initNetwork();
+  }
+
+

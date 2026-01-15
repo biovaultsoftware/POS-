@@ -160,3 +160,19 @@ SovereignOS.COUNCIL
 - Chain integrity verified on every boot
 - Replay attacks prevented by nonce checking
 - Append-only: no data can be deleted or modified
+
+
+## New in v2 (A+B+C+D)
+
+- **Decisions/Outcomes UI**: Use **Decision** button to commit `biz.decision` and **Outcome** (or the **Mark Outcome** button on a DECISION bubble) to commit `biz.outcome`.
+- **Quick Actions**: Time Audit / Wheat Test / Money Map buttons now open the Decision modal prefilled.
+- **Boardroom Share/Import**:
+  - Click **Share** in a chat to export the last 10 STAs for that thread (JSON copied to clipboard).
+  - Click **Import** to paste a partner’s JSON; the app verifies signatures best-effort and commits a local `biz.outcome` referencing the shared slice hash.
+
+### v2 Verification Checklist
+1. Send a chat message → verify `chat.user` then `ai.advice` committed.
+2. Click **Decision** → commit a decision → refresh → decision should still appear.
+3. Click **Mark Outcome** on the decision bubble → commit outcome → refresh → outcome should still appear.
+4. Click **Share** → paste into a text file.
+5. Click **Import** → paste the JSON → verify toast shows `verified x/y` and a new outcome entry appears.
